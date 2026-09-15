@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -15,15 +15,53 @@ import {
   UserPlus,
   Target,
   Sparkles,
-  Pencil,
-  Trash2
+  ShieldAlert,
+  BarChart3,
+  Lightbulb,
+  FileText,
+  Code2,
+  Trophy,
+  BookOpen,
+  BriefcaseBusiness,
+  Activity,
 } from "lucide-react";
 import "./App.css";
 
 const API = "http://127.0.0.1:8000";
 
+const emptyForm = {
+  name: "",
+  roll_no: "",
+  department: "AI & Data Science",
+  year: 3,
+  email: "",
+  cgpa: 0,
+  classes_conducted: 0,
+  classes_attended: 0,
+  projects: 0,
+  internships: 0,
+  certifications: 0,
+  hackathons: 0,
+  paper_presentations: 0,
+  awards: 0,
+  skills: "",
+  placement_status: "Not Ready",
+};
+
+function attendanceColor(value) {
+  if (value >= 85) return "excellent";
+  if (value >= 75) return "average";
+  return "low";
+}
+
+function careerColor(value) {
+  if (value >= 80) return "high";
+  if (value >= 65) return "medium";
+  return "low";
+}
+
 function App() {
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState("Dashboard");
   const [students, setStudents] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -32,26 +70,8 @@ function App() {
   const [smartQuery, setSmartQuery] = useState("");
   const [queryResult, setQueryResult] = useState(null);
   const [showAddStudent, setShowAddStudent] = useState(false);
-  const [editingStudent, setEditingStudent] = useState(null);
-
-  const [form, setForm] = useState({
-    name: "",
-    roll_no: "",
-    department: "AI & Data Science",
-    year: "3rd Year",
-    email: "",
-    cgpa: "",
-    classes_conducted: 100,
-    classes_attended: 0,
-    projects: 0,
-    internships: 0,
-    certifications: 0,
-    hackathons: 0,
-    paper_presentations: 0,
-    awards: 0,
-    skills: "",
-    placement_status: "Not Placed"
-  });
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
     loadData();
@@ -59,160 +79,91 @@ function App() {
 
   async function loadData() {
     try {
-      const studentResponse = await fetch(`${API}/students`);
-      const dashboardResponse = await fetch(`${API}/dashboard`);
+      setLoading(true);
 
-      const studentData = await studentResponse.json();
+      const [studentsResponse, dashboardResponse] = await Promise.all([
+        fetch(`${API}/students`),
+        fetch(`${API}/dashboard`),
+      ]);
+
+      const studentsData = await studentsResponse.json();
       const dashboardData = await dashboardResponse.json();
 
-      setStudents(studentData);
+      setStudents(studentsData);
       setDashboard(dashboardData);
     } catch (error) {
-      console.error("Backend connection error:", error);
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
   }
 
   async function openStudent(student) {
-    setSelectedStudent(student);
-    setAnalysis(null);
-
     try {
+      setSelectedStudent(student);
+
       const response = await fetch(
         `${API}/students/${student.id}/ai-analysis`
       );
 
-      const data = await response.json();
-      setAnalysis(data);
+      if (response.ok) {
+        const data = await response.json();
+        setAnalysis(data);
+      } else {
+        setAnalysis(null);
+      }
     } catch (error) {
       console.error(error);
+      setAnalysis(null);
     }
   }
 
-  function resetForm() {
-    setForm({
-      name: "",
-      roll_no: "",
-      department: "AI & Data Science",
-      year: "3rd Year",
-      email: "",
-      cgpa: "",
-      classes_conducted: 100,
-      classes_attended: 0,
-      projects: 0,
-      internships: 0,
-      certifications: 0,
-      hackathons: 0,
-      paper_presentations: 0,
-      awards: 0,
-      skills: "",
-      placement_status: "Not Placed"
-    });
-  }
-
-  function openAddStudent() {
-    setEditingStudent(null);
-    resetForm();
-    setShowAddStudent(true);
-  }
-
-  function openEditStudent(student) {
+  function closeStudent() {
     setSelectedStudent(null);
     setAnalysis(null);
-    setEditingStudent(student);
-
-    setForm({
-      name: student.name || "",
-      roll_no: student.roll_no || "",
-      department: student.department || "AI & Data Science",
-      year: student.year || "3rd Year",
-      email: student.email || "",
-      cgpa: student.cgpa ?? "",
-      classes_conducted: student.classes_conducted ?? 100,
-      classes_attended: student.classes_attended ?? 0,
-      projects: student.projects ?? 0,
-      internships: student.internships ?? 0,
-      certifications: student.certifications ?? 0,
-      hackathons: student.hackathons ?? 0,
-      paper_presentations: student.paper_presentations ?? 0,
-      awards: student.awards ?? 0,
-      skills: Array.isArray(student.skills)
-        ? student.skills.join(", ")
-        : student.skills || "",
-      placement_status: student.placement_status || "Not Placed"
-    });
-
-    setShowAddStudent(true);
   }
 
-  async function saveStudent(e) {
-    e.preventDefault();
-
-    const student = {
-      ...form,
-      cgpa: Number(form.cgpa),
-      classes_conducted: Number(form.classes_conducted),
-      classes_attended: Number(form.classes_attended),
-      projects: Number(form.projects),
-      internships: Number(form.internships),
-      certifications: Number(form.certifications),
-      hackathons: Number(form.hackathons),
-      paper_presentations: Number(form.paper_presentations),
-      awards: Number(form.awards),
-      skills: form.skills
-        .split(",")
-        .map((skill) => skill.trim())
-        .filter(Boolean)
-    };
-
+  async function addStudent() {
     try {
-      const url = editingStudent
-        ? `${API}/students/${editingStudent.id}`
-        : `${API}/students`;
+      const payload = {
+        ...form,
+        year: String(form.year),
+        cgpa: Number(form.cgpa),
+        classes_conducted: Number(form.classes_conducted),
+        classes_attended: Number(form.classes_attended),
+        projects: Number(form.projects),
+        internships: Number(form.internships),
+        certifications: Number(form.certifications),
+        hackathons: Number(form.hackathons),
+        paper_presentations: Number(form.paper_presentations),
+        awards: Number(form.awards),
+        skills:
+          typeof form.skills === "string"
+            ? form.skills
+                .split(",")
+                .map((skill) => skill.trim())
+                .filter(Boolean)
+            : form.skills,
+      };
 
-      const response = await fetch(url, {
-        method: editingStudent ? "PUT" : "POST",
+      const response = await fetch(`${API}/students`, {
+        method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(student)
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error("Unable to save student");
+        throw new Error("Unable to add student");
       }
 
+      setForm(emptyForm);
       setShowAddStudent(false);
-      setEditingStudent(null);
-      resetForm();
       await loadData();
     } catch (error) {
       console.error(error);
-      alert("Could not save student. Please check the backend.");
-    }
-  }
-
-  async function deleteStudent(student) {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${student.name}?`
-    );
-
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch(`${API}/students/${student.id}`, {
-        method: "DELETE"
-      });
-
-      if (!response.ok) {
-        throw new Error("Unable to delete student");
-      }
-
-      setSelectedStudent(null);
-      setAnalysis(null);
-      await loadData();
-    } catch (error) {
-      console.error(error);
-      alert("Could not delete student. Please check the backend.");
+      alert("Could not add student. Please check the details.");
     }
   }
 
@@ -228,1139 +179,904 @@ function App() {
       setQueryResult(data);
     } catch (error) {
       console.error(error);
+      setQueryResult({
+        answer: "Unable to connect to the AI Advisor.",
+        students: [],
+      });
     }
   }
 
-  const filteredStudents = students.filter((student) =>
-    `${student.name} ${student.roll_no} ${student.department}`
-      .toLowerCase()
-      .includes(search.toLowerCase())
+  const filteredStudents = useMemo(() => {
+    const value = search.toLowerCase().trim();
+
+    if (!value) return students;
+
+    return students.filter(
+      (student) =>
+        student.name?.toLowerCase().includes(value) ||
+        student.roll_no?.toLowerCase().includes(value) ||
+        student.department?.toLowerCase().includes(value)
+    );
+  }, [students, search]);
+
+  const atRiskStudents = students.filter(
+    (student) =>
+      student.risk_level === "High" ||
+      student.risk_level === "Medium" ||
+      student.attendance < 75
   );
 
-  function getAttendanceClass(value) {
-    if (value >= 85) return "excellent";
-    if (value >= 75) return "average";
-    return "low";
-  }
+  const placementReady = students.filter(
+    (student) =>
+      student.placement_readiness === "Ready" ||
+      student.placement_status === "Ready"
+  );
 
-  function getScoreClass(value) {
-    if (value >= 80) return "score-high";
-    if (value >= 65) return "score-medium";
-    return "score-low";
-  }
+  const averageCGPA =
+    students.length > 0
+      ? (
+          students.reduce((sum, student) => sum + Number(student.cgpa || 0), 0) /
+          students.length
+        ).toFixed(2)
+      : "0.00";
+
+  const averageAttendance =
+    students.length > 0
+      ? Math.round(
+          students.reduce(
+            (sum, student) => sum + Number(student.attendance || 0),
+            0
+          ) / students.length
+        )
+      : 0;
+
+  const navItems = [
+    {
+      name: "Dashboard",
+      icon: LayoutDashboard,
+    },
+    {
+      name: "Students",
+      icon: Users,
+    },
+    {
+      name: "Achievements",
+      icon: Award,
+    },
+    {
+      name: "Career Readiness",
+      icon: Briefcase,
+    },
+    {
+      name: "AI Advisor",
+      icon: Brain,
+    },
+  ];
 
   return (
-    <div className="app">
-
-      {/* SIDEBAR */}
-
+    <div className="app-shell">
       <aside className="sidebar">
-
         <div className="brand">
           <div className="brand-icon">
-            <Brain size={23} />
+            <GraduationCap size={24} />
           </div>
 
           <div>
-            <h2>StudentAI</h2>
-            <span>Career Intelligence</span>
+            <h1>StudentAI</h1>
+            <span>Performance System</span>
           </div>
         </div>
 
-        <nav>
+        <div className="sidebar-section-title">MAIN MENU</div>
 
-          <button
-            className={page === "dashboard" ? "nav-active" : ""}
-            onClick={() => setPage("dashboard")}
-          >
-            <LayoutDashboard size={19} />
-            Dashboard
-          </button>
+        <nav className="nav-menu">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const active = page === item.name;
 
-          <button
-            className={page === "students" ? "nav-active" : ""}
-            onClick={() => setPage("students")}
-          >
-            <Users size={19} />
-            Students
-          </button>
+            return (
+              <button
+                key={item.name}
+                className={`nav-item ${active ? "active" : ""}`}
+                onClick={() => {
+                  setPage(item.name);
+                  setQueryResult(null);
+                }}
+              >
+                <Icon size={19} />
+                <span>{item.name}</span>
 
-          <button
-            className={page === "achievements" ? "nav-active" : ""}
-            onClick={() => setPage("achievements")}
-          >
-            <Award size={19} />
-            Achievements
-          </button>
-
-          <button
-            className={page === "career" ? "nav-active" : ""}
-            onClick={() => setPage("career")}
-          >
-            <Briefcase size={19} />
-            Career Readiness
-          </button>
-
-          <button
-            className={page === "advisor" ? "nav-active" : ""}
-            onClick={() => setPage("advisor")}
-          >
-            <Sparkles size={19} />
-            AI Advisor
-          </button>
-
+                {active && <ChevronRight size={16} />}
+              </button>
+            );
+          })}
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="ai-status">
+          <div className="system-status">
             <span className="status-dot"></span>
-
             <div>
-              <strong>AI System Active</strong>
-              <small>Analysis engine online</small>
+              <strong>System Online</strong>
+              <small>AI analysis active</small>
             </div>
           </div>
-        </div>
 
+          <div className="sidebar-footer">
+            AI Student Performance
+            <br />
+            & Career Readiness
+          </div>
+        </div>
       </aside>
 
-
-      {/* MAIN */}
-
-      <main className="main">
-
+      <main className="main-content">
         <header className="topbar">
-
           <div>
-            <p className="eyebrow">STUDENT INTELLIGENCE PLATFORM</p>
-            <h1>
-              {page === "dashboard" && "Overview"}
-              {page === "students" && "Student Profiles"}
-              {page === "achievements" && "Student Achievements"}
-              {page === "career" && "Career Readiness"}
-              {page === "advisor" && "AI Student Advisor"}
-            </h1>
+            <p className="breadcrumb">Student Management / {page}</p>
+            <h2>{page}</h2>
           </div>
 
-          <div className="top-actions">
-
-            <div className="search-box">
+          <div className="topbar-actions">
+            <div className="top-search">
               <Search size={17} />
               <input
                 placeholder="Search students..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onFocus={() => setPage("Students")}
               />
             </div>
 
-            <button
-              className="add-btn"
-              onClick={openAddStudent}
-            >
-              <UserPlus size={18} />
-              Add Student
-            </button>
-
+            <div className="profile-circle">AI</div>
           </div>
-
         </header>
 
-
-        {/* DASHBOARD */}
-
-        {page === "dashboard" && dashboard && (
-
-          <div className="content">
-
-            <div className="welcome-card">
-
-              <div>
-                <span className="badge">
-                  <Sparkles size={14} />
-                  AI-Powered Analytics
-                </span>
-
-                <h2>
-                  Understand your students.
-                  <br />
-                  <span>Improve their future.</span>
-                </h2>
-
-                <p>
-                  StudentAI combines academic performance, attendance,
-                  achievements and career experience to identify student
-                  strengths and development opportunities.
-                </p>
-              </div>
-
-              <div className="welcome-graphic">
-                <Brain size={80} strokeWidth={1} />
-              </div>
-
+        <div className="content-area">
+          {loading ? (
+            <div className="loading-state">
+              <div className="loading-spinner"></div>
+              <p>Loading student data...</p>
             </div>
-
-
-            <div className="stats-grid">
-
-              <StatCard
-                icon={<Users />}
-                label="Total Students"
-                value={dashboard.total_students}
-                detail="Registered students"
-              />
-
-              <StatCard
-                icon={<GraduationCap />}
-                label="Average CGPA"
-                value={dashboard.average_cgpa}
-                detail="Overall academic performance"
-              />
-
-              <StatCard
-                icon={<TrendingUp />}
-                label="Average Attendance"
-                value={`${dashboard.average_attendance}%`}
-                detail="Across all students"
-              />
-
-              <StatCard
-                icon={<Target />}
-                label="Placement Ready"
-                value={dashboard.placement_ready}
-                detail="Students with strong profiles"
-              />
-
-            </div>
-
-
-            <div className="dashboard-grid">
-
-              <section className="panel">
-
-                <div className="panel-heading">
-                  <div>
-                    <h3>Student Performance</h3>
-                    <p>Recent student profiles</p>
-                  </div>
-
-                  <button onClick={() => setPage("students")}>
-                    View all <ChevronRight size={16} />
-                  </button>
-                </div>
-
-                <StudentTable
+          ) : (
+            <>
+              {page === "Dashboard" && (
+                <Dashboard
                   students={students}
+                  dashboard={dashboard}
+                  averageCGPA={averageCGPA}
+                  averageAttendance={averageAttendance}
+                  atRiskStudents={atRiskStudents}
+                  placementReady={placementReady}
                   openStudent={openStudent}
-                  openEditStudent={openEditStudent}
-                  deleteStudent={deleteStudent}
-                  getAttendanceClass={getAttendanceClass}
-                  getScoreClass={getScoreClass}
+                  setPage={setPage}
                 />
-
-              </section>
-
-
-              <section className="panel">
-
-                <div className="panel-heading">
-                  <div>
-                    <h3>Attendance Analysis</h3>
-                    <p>Current attendance distribution</p>
-                  </div>
-                </div>
-
-                <div className="attendance-summary">
-
-                  <div className="attendance-number">
-                    {dashboard.average_attendance}%
-                    <span>Average attendance</span>
-                  </div>
-
-                  <div className="attendance-bars">
-
-                    <Progress
-                      label="Excellent"
-                      value={dashboard.excellent_attendance}
-                      total={dashboard.total_students}
-                    />
-
-                    <Progress
-                      label="Average"
-                      value={dashboard.average_attendance_count}
-                      total={dashboard.total_students}
-                    />
-
-                    <Progress
-                      label="Low"
-                      value={dashboard.low_attendance}
-                      total={dashboard.total_students}
-                    />
-
-                  </div>
-
-                </div>
-
-              </section>
-
-            </div>
-
-          </div>
-
-        )}
-
-
-        {/* STUDENTS */}
-
-        {page === "students" && (
-
-          <div className="content">
-
-            <div className="page-intro">
-
-              <div>
-                <h2>Student Profiles</h2>
-                <p>
-                  Academic, attendance and career information for every student.
-                </p>
-              </div>
-
-              <button
-                className="add-btn"
-                onClick={openAddStudent}
-              >
-                <UserPlus size={18} />
-                Add Student
-              </button>
-
-            </div>
-
-
-            <section className="panel">
-
-              <StudentTable
-                students={filteredStudents}
-                openStudent={openStudent}
-                openEditStudent={openEditStudent}
-                deleteStudent={deleteStudent}
-                getAttendanceClass={getAttendanceClass}
-                getScoreClass={getScoreClass}
-              />
-
-            </section>
-
-          </div>
-
-        )}
-
-
-        {/* ACHIEVEMENTS */}
-
-        {page === "achievements" && (
-
-          <div className="content">
-
-            <div className="page-intro">
-              <div>
-                <h2>Achievements</h2>
-                <p>
-                  Discover students with strong academic and extracurricular achievements.
-                </p>
-              </div>
-            </div>
-
-
-            <div className="achievement-grid">
-
-              {filteredStudents.map((student) => (
-
-                <div
-                  className="achievement-card"
-                  key={student.id}
-                  onClick={() => openStudent(student)}
-                >
-
-                  <div className="student-avatar">
-                    {student.name.charAt(0)}
-                  </div>
-
-                  <div className="achievement-info">
-                    <h3>{student.name}</h3>
-                    <p>{student.roll_no}</p>
-                  </div>
-
-                  <div className="achievement-items">
-
-                    <Achievement
-                      label="Hackathons"
-                      value={student.hackathons}
-                    />
-
-                    <Achievement
-                      label="Awards"
-                      value={student.awards}
-                    />
-
-                    <Achievement
-                      label="Papers"
-                      value={student.paper_presentations}
-                    />
-
-                    <Achievement
-                      label="Certifications"
-                      value={student.certifications}
-                    />
-
-                  </div>
-
-                </div>
-
-              ))}
-
-            </div>
-
-          </div>
-
-        )}
-
-
-        {/* CAREER */}
-
-        {page === "career" && (
-
-          <div className="content">
-
-            <div className="page-intro">
-              <div>
-                <h2>Career Readiness</h2>
-                <p>
-                  AI-generated career readiness scores based on student profiles.
-                </p>
-              </div>
-            </div>
-
-
-            <div className="career-grid">
-
-              {filteredStudents
-                .sort((a, b) => b.career_score - a.career_score)
-                .map((student, index) => (
-
-                  <div
-                    className="career-card"
-                    key={student.id}
-                    onClick={() => openStudent(student)}
-                  >
-
-                    <div className="rank">
-                      #{index + 1}
-                    </div>
-
-                    <div className="career-person">
-
-                      <div className="student-avatar">
-                        {student.name.charAt(0)}
-                      </div>
-
-                      <div>
-                        <h3>{student.name}</h3>
-                        <p>{student.roll_no}</p>
-                      </div>
-
-                    </div>
-
-                    <div className={`career-score ${getScoreClass(student.career_score)}`}>
-                      {student.career_score}
-                      <span>/100</span>
-                    </div>
-
-                    <div className="score-label">
-                      {student.career_status}
-                    </div>
-
-                  </div>
-
-                ))}
-
-            </div>
-
-          </div>
-
-        )}
-
-
-        {/* AI ADVISOR */}
-
-        {page === "advisor" && (
-
-          <div className="content">
-
-            <div className="advisor-hero">
-
-              <div className="advisor-icon">
-                <Brain size={32} />
-              </div>
-
-              <div>
-                <span className="badge">
-                  <Sparkles size={14} />
-                  Intelligent Student Analysis
-                </span>
-
-                <h2>Ask the Student Advisor</h2>
-
-                <p>
-                  Ask questions about attendance, achievements,
-                  student performance and placement readiness.
-                </p>
-              </div>
-
-            </div>
-
-
-            <div className="query-box">
-
-              <input
-                value={smartQuery}
-                onChange={(e) => setSmartQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") runSmartQuery();
-                }}
-                placeholder="Example: Which students have low attendance?"
-              />
-
-              <button onClick={runSmartQuery}>
-                <Brain size={18} />
-                Analyze
-              </button>
-
-            </div>
-
-
-            <div className="suggestion-row">
-
-              <button onClick={() => setSmartQuery("Which students have low attendance?")}>
-                Low attendance students
-              </button>
-
-              <button onClick={() => setSmartQuery("Who are the top students?")}>
-                Top performing students
-              </button>
-
-              <button onClick={() => setSmartQuery("Who is placement ready?")}>
-                Placement ready
-              </button>
-
-              <button onClick={() => setSmartQuery("Who has the most achievements?")}>
-                Top achievements
-              </button>
-
-            </div>
-
-
-            {queryResult && (
-
-              <div className="query-result">
-
-                <div className="result-header">
-                  <div className="result-ai">
-                    <Brain size={19} />
-                  </div>
-
-                  <div>
-                    <h3>AI Analysis</h3>
-                    <p>{queryResult.message}</p>
-                  </div>
-                </div>
-
-
-                <div className="result-list">
-
-                  {queryResult.result.length === 0 ? (
-
-                    <div className="empty-result">
-                      No matching students found.
-                    </div>
-
-                  ) : (
-
-                    queryResult.result.map((item, index) => (
-
-                      <div className="result-item" key={index}>
-
-                        {typeof item === "string" ? (
-                          <>
-                            <div className="student-avatar small">
-                              {item.charAt(0)}
-                            </div>
-
-                            <strong>{item}</strong>
-                          </>
-                        ) : (
-                          <>
-                            <div className="student-avatar small">
-                              {item.name.charAt(0)}
-                            </div>
-
-                            <div>
-                              <strong>{item.name}</strong>
-                              <small>
-                                {item.career_score !== undefined
-                                  ? `Career score: ${item.career_score}`
-                                  : `Achievements: ${item.achievements}`}
-                              </small>
-                            </div>
-                          </>
-                        )}
-
-                      </div>
-
-                    ))
-
-                  )}
-
-                </div>
-
-              </div>
-
-            )}
-
-          </div>
-
-        )}
-
+              )}
+
+              {page === "Students" && (
+                <StudentsPage
+                  students={filteredStudents}
+                  search={search}
+                  setSearch={setSearch}
+                  openStudent={openStudent}
+                  setShowAddStudent={setShowAddStudent}
+                />
+              )}
+
+              {page === "Achievements" && (
+                <AchievementsPage students={students} />
+              )}
+
+              {page === "Career Readiness" && (
+                <CareerPage students={students} openStudent={openStudent} />
+              )}
+
+              {page === "AI Advisor" && (
+                <AIAdvisor
+                  smartQuery={smartQuery}
+                  setSmartQuery={setSmartQuery}
+                  runSmartQuery={runSmartQuery}
+                  queryResult={queryResult}
+                  students={students}
+                  atRiskStudents={atRiskStudents}
+                  openStudent={openStudent}
+                />
+              )}
+            </>
+          )}
+        </div>
       </main>
 
-
-      {/* STUDENT MODAL */}
-
       {selectedStudent && (
-
-        <div className="modal-overlay">
-
-          <div className="student-modal">
-
-            <button
-              className="close-btn"
-              onClick={() => setSelectedStudent(null)}
-            >
-              <X size={20} />
-            </button>
-
-
-            <div className="profile-header">
-
-              <div className="profile-avatar">
-                {selectedStudent.name.charAt(0)}
-              </div>
-
-              <div>
-                <h2>{selectedStudent.name}</h2>
-                <p>
-                  {selectedStudent.roll_no} • {selectedStudent.department}
-                </p>
-              </div>
-
-            </div>
-
-
-            <div className="profile-metrics">
-
-              <Metric
-                label="CGPA"
-                value={selectedStudent.cgpa}
-              />
-
-              <Metric
-                label="Attendance"
-                value={`${selectedStudent.attendance_percentage}%`}
-              />
-
-              <Metric
-                label="Career Score"
-                value={selectedStudent.career_score}
-              />
-
-              <Metric
-                label="Projects"
-                value={selectedStudent.projects}
-              />
-
-            </div>
-
-
-            <div className="profile-section">
-
-              <h3>Academic & Career Profile</h3>
-
-              <div className="detail-grid">
-
-                <Detail
-                  label="Internships"
-                  value={selectedStudent.internships}
-                />
-
-                <Detail
-                  label="Certifications"
-                  value={selectedStudent.certifications}
-                />
-
-                <Detail
-                  label="Hackathons"
-                  value={selectedStudent.hackathons}
-                />
-
-                <Detail
-                  label="Paper Presentations"
-                  value={selectedStudent.paper_presentations}
-                />
-
-                <Detail
-                  label="Awards"
-                  value={selectedStudent.awards}
-                />
-
-                <Detail
-                  label="Placement Status"
-                  value={selectedStudent.placement_status}
-                />
-
-              </div>
-
-            </div>
-
-
-            <div className="profile-section">
-
-              <h3>Technical Skills</h3>
-
-              <div className="skill-list">
-
-                {selectedStudent.skills.map((skill, index) => (
-                  <span key={index}>{skill}</span>
-                ))}
-
-              </div>
-
-            </div>
-
-
-            {analysis && (
-
-              <div className="ai-analysis">
-
-                <div className="analysis-title">
-                  <div className="analysis-icon">
-                    <Sparkles size={18} />
-                  </div>
-
-                  <div>
-                    <h3>AI Student Analysis</h3>
-                    <p>
-                      Generated from the student's complete profile
-                    </p>
-                  </div>
-                </div>
-
-
-                <div className="ai-overview">
-
-                  <div>
-                    <span>Career Readiness</span>
-                    <strong>
-                      {analysis.career_score}/100
-                    </strong>
-                  </div>
-
-                  <span className="ai-status-label">
-                    {analysis.career_status}
-                  </span>
-
-                </div>
-
-
-                <p className="overall">
-                  {analysis.overall_assessment}
-                </p>
-
-
-                <div className="analysis-columns">
-
-                  <AnalysisList
-                    title="Strengths"
-                    items={analysis.strengths}
-                    type="positive"
-                  />
-
-                  <AnalysisList
-                    title="Areas to Improve"
-                    items={analysis.areas_to_improve}
-                    type="warning"
-                  />
-
-                </div>
-
-
-                <div className="recommendations">
-
-                  <h4>
-                    <Target size={16} />
-                    AI Recommendations
-                  </h4>
-
-                  {analysis.recommendations.map((item, index) => (
-                    <div className="recommendation" key={index}>
-                      <CheckCircle size={16} />
-                      {item}
-                    </div>
-                  ))}
-
-                </div>
-
-              </div>
-
-            )}
-
-            <div style={{
-              display: "flex",
-              gap: "10px",
-              marginTop: "22px",
-              paddingTop: "18px",
-              borderTop: "1px solid #e5e7eb"
-            }}>
-              <button
-                type="button"
-                className="view-btn"
-                onClick={() => openEditStudent(selectedStudent)}
-                style={{ display: "inline-flex", alignItems: "center", gap: "7px" }}
-              >
-                <Pencil size={15} />
-                Edit Student
-              </button>
-
-              <button
-                type="button"
-                className="view-btn"
-                onClick={() => deleteStudent(selectedStudent)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "7px",
-                  borderColor: "#ef4444",
-                  color: "#dc2626"
-                }}
-              >
-                <Trash2 size={15} />
-                Delete Student
-              </button>
-            </div>
-
-          </div>
-
-        </div>
-
+        <StudentModal
+          student={selectedStudent}
+          analysis={analysis}
+          closeStudent={closeStudent}
+        />
       )}
-
-
-      {/* ADD STUDENT MODAL */}
 
       {showAddStudent && (
+        <AddStudentModal
+          form={form}
+          setForm={setForm}
+          addStudent={addStudent}
+          close={() => setShowAddStudent(false)}
+        />
+      )}
+    </div>
+  );
+}
 
-        <div className="modal-overlay">
+function Dashboard({
+  students,
+  dashboard,
+  averageCGPA,
+  averageAttendance,
+  atRiskStudents,
+  placementReady,
+  openStudent,
+  setPage,
+}) {
+  const topStudents = [...students]
+    .sort((a, b) => Number(b.career_score || 0) - Number(a.career_score || 0))
+    .slice(0, 5);
 
-          <div className="add-modal">
-
-            <button
-              className="close-btn"
-              onClick={() => setShowAddStudent(false)}
-            >
-              <X size={20} />
-            </button>
-
-            <div className="modal-heading">
-              <div className="modal-icon">
-                <UserPlus size={22} />
-              </div>
-
-              <div>
-                <h2>{editingStudent ? "Edit Student" : "Add Student"}</h2>
-                <p>{editingStudent ? "Update the student's academic and career information." : "Enter the student's academic and career information."}</p>
-              </div>
-            </div>
-
-
-            <form onSubmit={saveStudent}>
-
-              <div className="form-grid">
-
-                <Input
-                  label="Student Name"
-                  value={form.name}
-                  onChange={(value) =>
-                    setForm({ ...form, name: value })
-                  }
-                  required
-                />
-
-                <Input
-                  label="Roll Number"
-                  value={form.roll_no}
-                  onChange={(value) =>
-                    setForm({ ...form, roll_no: value })
-                  }
-                  required
-                />
-
-                <Input
-                  label="Email"
-                  value={form.email}
-                  onChange={(value) =>
-                    setForm({ ...form, email: value })
-                  }
-                />
-
-                <Input
-                  label="CGPA"
-                  type="number"
-                  step="0.1"
-                  value={form.cgpa}
-                  onChange={(value) =>
-                    setForm({ ...form, cgpa: value })
-                  }
-                  required
-                />
-
-                <Input
-                  label="Classes Conducted"
-                  type="number"
-                  value={form.classes_conducted}
-                  onChange={(value) =>
-                    setForm({
-                      ...form,
-                      classes_conducted: value
-                    })
-                  }
-                />
-
-                <Input
-                  label="Classes Attended"
-                  type="number"
-                  value={form.classes_attended}
-                  onChange={(value) =>
-                    setForm({
-                      ...form,
-                      classes_attended: value
-                    })
-                  }
-                />
-
-                <Input
-                  label="Projects"
-                  type="number"
-                  value={form.projects}
-                  onChange={(value) =>
-                    setForm({ ...form, projects: value })
-                  }
-                />
-
-                <Input
-                  label="Internships"
-                  type="number"
-                  value={form.internships}
-                  onChange={(value) =>
-                    setForm({ ...form, internships: value })
-                  }
-                />
-
-                <Input
-                  label="Certifications"
-                  type="number"
-                  value={form.certifications}
-                  onChange={(value) =>
-                    setForm({
-                      ...form,
-                      certifications: value
-                    })
-                  }
-                />
-
-                <Input
-                  label="Hackathons"
-                  type="number"
-                  value={form.hackathons}
-                  onChange={(value) =>
-                    setForm({
-                      ...form,
-                      hackathons: value
-                    })
-                  }
-                />
-
-                <Input
-                  label="Paper Presentations"
-                  type="number"
-                  value={form.paper_presentations}
-                  onChange={(value) =>
-                    setForm({
-                      ...form,
-                      paper_presentations: value
-                    })
-                  }
-                />
-
-                <Input
-                  label="Awards"
-                  type="number"
-                  value={form.awards}
-                  onChange={(value) =>
-                    setForm({ ...form, awards: value })
-                  }
-                />
-
-              </div>
-
-
-              <div className="form-field full">
-                <label>Placement Status</label>
-                <select
-                  value={form.placement_status}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      placement_status: e.target.value
-                    })
-                  }
-                >
-                  <option value="Not Placed">Not Placed</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Placement Ready">Placement Ready</option>
-                  <option value="Placed">Placed</option>
-                  <option value="Needs Improvement">Needs Improvement</option>
-                </select>
-              </div>
-
-
-              <div className="form-field full">
-
-                <label>Technical Skills</label>
-
-                <input
-                  value={form.skills}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      skills: e.target.value
-                    })
-                  }
-                  placeholder="Python, SQL, Java, React"
-                />
-
-                <small>Separate skills using commas.</small>
-
-              </div>
-
-
-              <button className="submit-btn" type="submit">
-                {editingStudent ? "Save Changes" : "Add Student"}
-                <ChevronRight size={18} />
-              </button>
-
-            </form>
-
-          </div>
-
+  return (
+    <div className="page-content">
+      <div className="welcome-row">
+        <div>
+          <h3>Student Performance Overview</h3>
+          <p>
+            Monitor academic performance, attendance, achievements and career
+            readiness from one place.
+          </p>
         </div>
 
-      )}
-
-    </div>
-  );
-}
-
-
-// ---------------------------------------------------------
-// COMPONENTS
-// ---------------------------------------------------------
-
-function StatCard({ icon, label, value, detail }) {
-  return (
-    <div className="stat-card">
-
-      <div className="stat-icon">
-        {icon}
+        <button className="primary-button" onClick={() => setPage("Students")}>
+          <Users size={17} />
+          View Students
+        </button>
       </div>
 
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-        <small>{detail}</small>
-      </div>
+      <div className="stat-grid">
+        <StatCard
+          icon={<Users size={21} />}
+          label="Total Students"
+          value={students.length}
+          detail="Students registered"
+        />
 
-    </div>
-  );
-}
+        <StatCard
+          icon={<GraduationCap size={21} />}
+          label="Average CGPA"
+          value={averageCGPA}
+          detail="Overall academic performance"
+        />
 
+        <StatCard
+          icon={<Activity size={21} />}
+          label="Average Attendance"
+          value={`${averageAttendance}%`}
+          detail="Across all students"
+        />
 
-function Progress({ label, value, total }) {
-
-  const percentage =
-    total === 0 ? 0 : Math.round((value / total) * 100);
-
-  return (
-    <div className="progress-row">
-
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
-
-      <div className="progress-track">
-        <div
-          className={`progress-fill ${label.toLowerCase()}`}
-          style={{ width: `${percentage}%` }}
+        <StatCard
+          icon={<BriefcaseBusiness size={21} />}
+          label="Placement Ready"
+          value={placementReady.length}
+          detail={`${students.length} total students`}
         />
       </div>
 
+      <div className="dashboard-grid">
+        <section className="panel large-panel">
+          <PanelHeader
+            title="Student Performance"
+            subtitle="Academic and career overview"
+            icon={<BarChart3 size={19} />}
+          />
+
+          <div className="table-wrapper">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>CGPA</th>
+                  <th>Attendance</th>
+                  <th>Career Score</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {topStudents.map((student) => (
+                  <tr key={student.id}>
+                    <td>
+                      <div className="student-cell">
+                        <div className="student-avatar">
+                          {student.name?.charAt(0)}
+                        </div>
+
+                        <div>
+                          <strong>{student.name}</strong>
+                          <span>{student.roll_no}</span>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td>
+                      <strong>{student.cgpa}</strong>
+                    </td>
+
+                    <td>
+                      <div className="progress-with-text">
+                        <div className="mini-progress">
+                          <div
+                            className={`mini-progress-fill ${attendanceColor(
+                              student.attendance
+                            )}`}
+                            style={{
+                              width: `${Math.min(
+                                Number(student.attendance || 0),
+                                100
+                              )}%`,
+                            }}
+                          ></div>
+                        </div>
+                        <span>{student.attendance}%</span>
+                      </div>
+                    </td>
+
+                    <td>
+                      <strong>{student.career_score || 0}</strong>
+                    </td>
+
+                    <td>
+                      <StatusBadge
+                        text={
+                          student.placement_readiness ||
+                          student.placement_status ||
+                          "Not Ready"
+                        }
+                      />
+                    </td>
+
+                    <td>
+                      <button
+                        className="icon-button"
+                        onClick={() => openStudent(student)}
+                      >
+                        <ChevronRight size={17} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="panel">
+          <PanelHeader
+            title="AI Risk Monitor"
+            subtitle="Students requiring attention"
+            icon={<ShieldAlert size={19} />}
+          />
+
+          {atRiskStudents.length === 0 ? (
+            <div className="empty-small">
+              <CheckCircle size={30} />
+              <strong>No high-risk students</strong>
+              <span>Students are currently performing well.</span>
+            </div>
+          ) : (
+            <div className="risk-list">
+              {atRiskStudents.slice(0, 5).map((student) => (
+                <div
+                  className="risk-item"
+                  key={student.id}
+                  onClick={() => openStudent(student)}
+                >
+                  <div className="risk-icon">
+                    <AlertTriangle size={17} />
+                  </div>
+
+                  <div className="risk-info">
+                    <strong>{student.name}</strong>
+                    <span>
+                      {student.attendance < 75
+                        ? `Low attendance: ${student.attendance}%`
+                        : `Risk level: ${student.risk_level}`}
+                    </span>
+                  </div>
+
+                  <ChevronRight size={16} />
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <div className="section-heading">
+        <div>
+          <h3>AI-Powered Insights</h3>
+          <p>Key capabilities of the student intelligence system.</p>
+        </div>
+      </div>
+
+      <div className="feature-grid">
+        <FeatureCard
+          icon={<ShieldAlert size={21} />}
+          title="At-Risk Detection"
+          text="Identify students who may need academic or attendance support."
+        />
+
+        <FeatureCard
+          icon={<TrendingUp size={21} />}
+          title="Performance Prediction"
+          text="Estimate future academic performance using current student data."
+        />
+
+        <FeatureCard
+          icon={<Target size={21} />}
+          title="Skill Gap Analysis"
+          text="Find missing technical skills and areas that need improvement."
+        />
+
+        <FeatureCard
+          icon={<Briefcase size={21} />}
+          title="Career Recommendation"
+          text="Recommend suitable career paths based on student strengths."
+        />
+
+        <FeatureCard
+          icon={<CheckCircle size={21} />}
+          title="Placement Readiness"
+          text="Evaluate whether students are ready for placement opportunities."
+        />
+      </div>
     </div>
   );
 }
 
-
-function StudentTable({
+function StudentsPage({
   students,
+  search,
+  setSearch,
   openStudent,
-  openEditStudent,
-  deleteStudent,
-  getAttendanceClass,
-  getScoreClass
+  setShowAddStudent,
 }) {
+  return (
+    <div className="page-content">
+      <div className="welcome-row">
+        <div>
+          <h3>Student Management</h3>
+          <p>Search, review and analyze student performance.</p>
+        </div>
+
+        <button
+          className="primary-button"
+          onClick={() => setShowAddStudent(true)}
+        >
+          <UserPlus size={17} />
+          Add Student
+        </button>
+      </div>
+
+      <div className="student-toolbar">
+        <div className="large-search">
+          <Search size={18} />
+          <input
+            placeholder="Search by name, roll number or department..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        <div className="result-count">
+          {students.length} student{students.length !== 1 ? "s" : ""}
+        </div>
+      </div>
+
+      <section className="panel">
+        <div className="table-wrapper">
+          <table className="data-table student-table">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Department</th>
+                <th>Year</th>
+                <th>CGPA</th>
+                <th>Attendance</th>
+                <th>Career Score</th>
+                <th>Risk</th>
+                <th></th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {students.map((student) => (
+                <tr key={student.id}>
+                  <td>
+                    <div className="student-cell">
+                      <div className="student-avatar">
+                        {student.name?.charAt(0)}
+                      </div>
+
+                      <div>
+                        <strong>{student.name}</strong>
+                        <span>{student.roll_no}</span>
+                      </div>
+                    </div>
+                  </td>
+
+                  <td>{student.department}</td>
+                  <td>Year {student.year}</td>
+                  <td>
+                    <strong>{student.cgpa}</strong>
+                  </td>
+
+                  <td>
+                    <span
+                      className={`attendance-text ${attendanceColor(
+                        student.attendance
+                      )}`}
+                    >
+                      {student.attendance}%
+                    </span>
+                  </td>
+
+                  <td>{student.career_score || 0}</td>
+
+                  <td>
+                    <StatusBadge
+                      text={student.risk_level || "Low"}
+                      risk
+                    />
+                  </td>
+
+                  <td>
+                    <button
+                      className="view-button"
+                      onClick={() => openStudent(student)}
+                    >
+                      View
+                      <ChevronRight size={15} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+
+              {students.length === 0 && (
+                <tr>
+                  <td colSpan="8">
+                    <div className="empty-table">No students found.</div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AchievementsPage({ students }) {
+  const totalHackathons = students.reduce(
+    (sum, student) => sum + Number(student.hackathons || 0),
+    0
+  );
+
+  const totalAwards = students.reduce(
+    (sum, student) => sum + Number(student.awards || 0),
+    0
+  );
+
+  const totalPapers = students.reduce(
+    (sum, student) => sum + Number(student.paper_presentations || 0),
+    0
+  );
+
+  const totalCertifications = students.reduce(
+    (sum, student) => sum + Number(student.certifications || 0),
+    0
+  );
+
+  const achievementCards = [
+    {
+      icon: <Trophy size={22} />,
+      label: "Hackathons",
+      value: totalHackathons,
+      text: "Hackathon participations and wins",
+    },
+    {
+      icon: <Award size={22} />,
+      label: "Awards",
+      value: totalAwards,
+      text: "Academic and project awards",
+    },
+    {
+      icon: <FileText size={22} />,
+      label: "Paper Presentations",
+      value: totalPapers,
+      text: "Research presentations",
+    },
+    {
+      icon: <BookOpen size={22} />,
+      label: "Certifications",
+      value: totalCertifications,
+      text: "Professional certifications",
+    },
+  ];
 
   return (
-    <div className="table-wrapper">
+    <div className="page-content">
+      <div className="welcome-row">
+        <div>
+          <h3>Student Achievements</h3>
+          <p>Track accomplishments beyond classroom performance.</p>
+        </div>
+      </div>
 
-      <table>
+      <div className="achievement-summary-grid">
+        {achievementCards.map((card) => (
+          <div className="achievement-summary" key={card.label}>
+            <div className="summary-icon">{card.icon}</div>
+            <div>
+              <span>{card.label}</span>
+              <strong>{card.value}</strong>
+              <small>{card.text}</small>
+            </div>
+          </div>
+        ))}
+      </div>
 
-        <thead>
-          <tr>
-            <th>Student</th>
-            <th>CGPA</th>
-            <th>Attendance</th>
-            <th>Achievements</th>
-            <th>Career Score</th>
-            <th></th>
-          </tr>
-        </thead>
+      <section className="panel">
+        <PanelHeader
+          title="Achievement Overview"
+          subtitle="Student accomplishments"
+          icon={<Award size={19} />}
+        />
 
-        <tbody>
+        <div className="achievement-list">
+          {students.map((student) => {
+            const total =
+              Number(student.hackathons || 0) +
+              Number(student.awards || 0) +
+              Number(student.paper_presentations || 0) +
+              Number(student.certifications || 0);
 
-          {students.map((student) => (
-
-            <tr key={student.id}>
-
-              <td>
+            return (
+              <div className="achievement-row" key={student.id}>
                 <div className="student-cell">
+                  <div className="student-avatar">
+                    {student.name?.charAt(0)}
+                  </div>
 
-                  <div className="student-avatar small">
-                    {student.name.charAt(0)}
+                  <div>
+                    <strong>{student.name}</strong>
+                    <span>{student.roll_no}</span>
+                  </div>
+                </div>
+
+                <div className="achievement-stat">
+                  <Trophy size={16} />
+                  <span>{student.hackathons || 0} Hackathons</span>
+                </div>
+
+                <div className="achievement-stat">
+                  <Award size={16} />
+                  <span>{student.awards || 0} Awards</span>
+                </div>
+
+                <div className="achievement-stat">
+                  <FileText size={16} />
+                  <span>{student.paper_presentations || 0} Papers</span>
+                </div>
+
+                <div className="achievement-total">
+                  <strong>{total}</strong>
+                  <span>Total</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function CareerPage({ students, openStudent }) {
+  const rankedStudents = [...students].sort(
+    (a, b) => Number(b.career_score || 0) - Number(a.career_score || 0)
+  );
+
+  return (
+    <div className="page-content">
+      <div className="welcome-row">
+        <div>
+          <h3>Career Readiness</h3>
+          <p>
+            Understand placement readiness, career direction and skill gaps.
+          </p>
+        </div>
+      </div>
+
+      <div className="career-intro">
+        <div className="career-intro-icon">
+          <Target size={27} />
+        </div>
+
+        <div>
+          <h3>Placement & Career Intelligence</h3>
+          <p>
+            The system evaluates academic performance, attendance,
+            achievements, projects, internships, certifications and technical
+            skills to estimate career readiness.
+          </p>
+        </div>
+      </div>
+
+      <section className="panel">
+        <PanelHeader
+          title="Career Readiness Ranking"
+          subtitle="Students ranked by overall career score"
+          icon={<TrendingUp size={19} />}
+        />
+
+        <div className="career-ranking">
+          {rankedStudents.map((student, index) => (
+            <div
+              className="career-rank-row"
+              key={student.id}
+              onClick={() => openStudent(student)}
+            >
+              <div className="rank-number">{index + 1}</div>
+
+              <div className="student-cell career-student">
+                <div className="student-avatar">
+                  {student.name?.charAt(0)}
+                </div>
+
+                <div>
+                  <strong>{student.name}</strong>
+                  <span>{student.roll_no}</span>
+                </div>
+              </div>
+
+              <div className="score-block">
+                <span>Career Score</span>
+                <strong>{student.career_score || 0}/100</strong>
+              </div>
+
+              <div className="score-progress">
+                <div
+                  className={`score-progress-fill ${careerColor(
+                    Number(student.career_score || 0)
+                  )}`}
+                  style={{
+                    width: `${Math.min(
+                      Number(student.career_score || 0),
+                      100
+                    )}%`,
+                  }}
+                ></div>
+              </div>
+
+              <StatusBadge
+                text={
+                  student.placement_readiness ||
+                  student.placement_status ||
+                  "Not Ready"
+                }
+              />
+
+              <ChevronRight size={17} />
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AIAdvisor({
+  smartQuery,
+  setSmartQuery,
+  runSmartQuery,
+  queryResult,
+  students,
+  atRiskStudents,
+  openStudent,
+}) {
+  const examples = [
+    "Which students have low attendance?",
+    "Who are the top students?",
+    "Who is placement ready?",
+    "Who has the most achievements?",
+  ];
+
+  return (
+    <div className="page-content">
+      <div className="ai-hero">
+        <div className="ai-hero-icon">
+          <Sparkles size={27} />
+        </div>
+
+        <div>
+          <span className="eyebrow">AI STUDENT INTELLIGENCE</span>
+          <h3>AI Advisor</h3>
+          <p>
+            Ask questions about student performance and receive data-driven
+            insights.
+          </p>
+        </div>
+      </div>
+
+      <section className="advisor-query-panel">
+        <div className="advisor-input">
+          <Brain size={20} />
+          <input
+            value={smartQuery}
+            onChange={(e) => setSmartQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") runSmartQuery();
+            }}
+            placeholder="Ask something about your students..."
+          />
+
+          <button onClick={runSmartQuery}>
+            Analyze
+            <ChevronRight size={16} />
+          </button>
+        </div>
+
+        <div className="example-queries">
+          <span>Try asking:</span>
+
+          {examples.map((example) => (
+            <button
+              key={example}
+              onClick={() => {
+                setSmartQuery(example);
+              }}
+            >
+              {example}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {queryResult && (
+        <section className="panel advisor-result">
+          <PanelHeader
+            title="AI Analysis Result"
+            subtitle="Based on the current student dataset"
+            icon={<Brain size={19} />}
+          />
+
+          <div className="result-answer">
+            <Sparkles size={18} />
+            <p>
+               {typeof queryResult.answer === "string"
+                 ? queryResult.answer
+                 : JSON.stringify(queryResult.answer)}
+            </p>
+          </div>
+
+          {queryResult.students?.length > 0 && (
+            <div className="query-students">
+              {queryResult.students.map((student) => (
+                <button
+                  className="query-student"
+                  key={student.id}
+                  onClick={() => openStudent(student)}
+                >
+                  <div className="student-avatar">
+                    {student.name?.charAt(0)}
                   </div>
 
                   <div>
@@ -1368,192 +1084,632 @@ function StudentTable({
                     <span>{student.roll_no}</span>
                   </div>
 
-                </div>
-              </td>
+                  <ChevronRight size={16} />
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
-              <td>
-                <strong>{student.cgpa}</strong>
-              </td>
+      <div className="advisor-grid">
+        <div className="advisor-card">
+          <div className="advisor-card-icon risk">
+            <ShieldAlert size={21} />
+          </div>
 
-              <td>
-                <div className="attendance-cell">
+          <div>
+            <span>At-Risk Students</span>
+            <strong>{atRiskStudents.length}</strong>
+            <small>Need attention or intervention</small>
+          </div>
+        </div>
 
-                  <span className={getAttendanceClass(student.attendance_percentage)}>
-                    {student.attendance_percentage}%
-                  </span>
+        <div className="advisor-card">
+          <div className="advisor-card-icon">
+            <Users size={21} />
+          </div>
 
-                  <small>{student.attendance_status}</small>
+          <div>
+            <span>Total Students</span>
+            <strong>{students.length}</strong>
+            <small>Students in the system</small>
+          </div>
+        </div>
 
-                </div>
-              </td>
+        <div className="advisor-card">
+          <div className="advisor-card-icon">
+            <Lightbulb size={21} />
+          </div>
 
-              <td>
-                <span className="achievement-count">
-                  {student.awards +
-                    student.hackathons +
-                    student.paper_presentations +
-                    student.certifications}
-                </span>
-              </td>
-
-              <td>
-                <span className={`score-pill ${getScoreClass(student.career_score)}`}>
-                  {student.career_score}
-                </span>
-              </td>
-
-              <td>
-
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "7px",
-                  flexWrap: "wrap"
-                }}>
-                  <button
-                    className="view-btn"
-                    onClick={() => openStudent(student)}
-                    style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}
-                  >
-                    View
-                    <ChevronRight size={15} />
-                  </button>
-
-                  <button
-                    className="view-btn"
-                    onClick={() => openEditStudent(student)}
-                    title="Edit student"
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      padding: "8px"
-                    }}
-                  >
-                    <Pencil size={15} />
-                  </button>
-
-                  <button
-                    className="view-btn"
-                    onClick={() => deleteStudent(student)}
-                    title="Delete student"
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      padding: "8px",
-                      borderColor: "#ef4444",
-                      color: "#dc2626"
-                    }}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-
-              </td>
-
-            </tr>
-
-          ))}
-
-        </tbody>
-
-      </table>
-
+          <div>
+            <span>AI Capabilities</span>
+            <strong>5</strong>
+            <small>Smart analysis features</small>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
+function StudentModal({ student, analysis, closeStudent }) {
+  const skillList = Array.isArray(student.skills)
+    ? student.skills
+    : typeof student.skills === "string"
+      ? student.skills.split(",").map((skill) => skill.trim())
+      : [];
 
-function Achievement({ label, value }) {
   return (
-    <div>
-      <strong>{value}</strong>
-      <span>{label}</span>
+    <div className="modal-overlay" onClick={closeStudent}>
+      <div className="student-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-student-heading">
+            <div className="large-avatar">{student.name?.charAt(0)}</div>
+
+            <div>
+              <span className="eyebrow">STUDENT PROFILE</span>
+              <h2>{student.name}</h2>
+              <p>
+                {student.roll_no} · {student.department} · Year {student.year}
+              </p>
+            </div>
+          </div>
+
+          <button className="close-button" onClick={closeStudent}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <div className="profile-metrics">
+            <Metric
+              label="CGPA"
+              value={student.cgpa}
+              icon={<GraduationCap size={18} />}
+            />
+
+            <Metric
+              label="Attendance"
+              value={`${student.attendance}%`}
+              icon={<Activity size={18} />}
+            />
+
+            <Metric
+              label="Career Score"
+              value={`${student.career_score || 0}/100`}
+              icon={<TrendingUp size={18} />}
+            />
+
+            <Metric
+              label="Achievements"
+              value={student.achievement_count || 0}
+              icon={<Award size={18} />}
+            />
+          </div>
+
+          <div className="analysis-grid">
+            <AnalysisCard
+              icon={<ShieldAlert size={19} />}
+              title="At-Risk Detection"
+              className="risk-analysis"
+            >
+              <div className="analysis-highlight">
+                <strong>{student.risk_level || "Low"}</strong>
+                <span>
+                  {student.risk_reason ||
+                    "Current student indicators are being monitored."}
+                </span>
+              </div>
+            </AnalysisCard>
+
+            <AnalysisCard
+              icon={<TrendingUp size={19} />}
+              title="Performance Prediction"
+            >
+              <div className="prediction-box">
+                <strong>
+                  {student.predicted_performance ||
+                    student.performance_prediction ||
+                    "Stable"}
+                </strong>
+
+                <span>
+                  Estimated future academic performance based on current
+                  indicators.
+                </span>
+              </div>
+            </AnalysisCard>
+
+            <AnalysisCard
+              icon={<Target size={19} />}
+              title="Skill Gap Analysis"
+            >
+              <div className="skill-section">
+                <span className="sub-label">Current Skills</span>
+
+                <div className="skill-tags">
+                  {skillList.length > 0 ? (
+                    skillList.map((skill) => (
+                      <span className="skill-tag" key={skill}>
+                        {skill}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="muted-text">No skills added</span>
+                  )}
+                </div>
+
+                <span className="sub-label gap-label">Recommended Skills</span>
+
+                <div className="skill-tags">
+                  {(student.skill_gaps || student.recommended_skills || [])
+                    .slice?.(0, 8)
+                    .map((skill) => (
+                      <span className="skill-tag recommended" key={skill}>
+                        + {skill}
+                      </span>
+                    ))}
+                </div>
+              </div>
+            </AnalysisCard>
+
+            <AnalysisCard
+              icon={<Briefcase size={19} />}
+              title="Career Recommendation"
+            >
+              <div className="career-recommendation">
+                <strong>
+                  {student.career_recommendation ||
+                    student.recommended_career ||
+                    "Technology / Software Development"}
+                </strong>
+
+                <span>
+                  Recommended based on the student's academic and technical
+                  profile.
+                </span>
+              </div>
+            </AnalysisCard>
+
+            <AnalysisCard
+              icon={<CheckCircle size={19} />}
+              title="Placement Readiness"
+            >
+              <div className="placement-box">
+                <StatusBadge
+                  text={
+                    student.placement_readiness ||
+                    student.placement_status ||
+                    "Not Ready"
+                  }
+                />
+
+                <span>
+                  {student.placement_reason ||
+                    "Readiness is calculated using academics, skills,experience and achievements."}
+                    
+                </span>
+              </div>
+            </AnalysisCard>
+          </div>
+
+          <section className="profile-section">
+            <div className="section-title-row">
+              <div>
+                <h3>Academic & Career Profile</h3>
+                <p>Current student information</p>
+              </div>
+            </div>
+
+            <div className="detail-grid">
+              <Detail label="Email" value={student.email || "Not provided"} />
+              <Detail label="Department" value={student.department} />
+              <Detail label="Projects" value={student.projects || 0} />
+              <Detail label="Internships" value={student.internships || 0} />
+              <Detail
+                label="Certifications"
+                value={student.certifications || 0}
+              />
+              <Detail label="Hackathons" value={student.hackathons || 0} />
+              <Detail
+                label="Paper Presentations"
+                value={student.paper_presentations || 0}
+              />
+              <Detail label="Awards" value={student.awards || 0} />
+            </div>
+          </section>
+
+          {analysis && (
+            <section className="ai-assessment">
+              <div className="ai-assessment-heading">
+                <div className="ai-small-icon">
+                  <Brain size={18} />
+                </div>
+
+                <div>
+                  <span className="eyebrow">AI ASSESSMENT</span>
+                  <h3>Student Analysis</h3>
+                </div>
+              </div>
+
+              <p className="assessment-text">
+                {analysis.overall_assessment ||
+                  analysis.assessment ||
+                  "Analysis generated from the student's current profile."}
+              </p>
+
+              <div className="assessment-columns">
+                <div>
+                  <h4>Strengths</h4>
+
+                  <ul>
+                    {(analysis.strengths || []).map((item) => (
+                      <li key={item}>
+                        <CheckCircle size={15} />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div>
+                  <h4>Areas to Improve</h4>
+
+                  <ul>
+                    {(analysis.areas_to_improve || []).map((item) => (
+                      <li key={item}>
+                        <AlertTriangle size={15} />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {analysis.recommendations?.length > 0 && (
+                <div className="recommendation-list">
+                  <h4>Recommended Actions</h4>
+
+                  {analysis.recommendations.map((recommendation) => (
+                    <div
+                      className="recommendation-item"
+                      key={recommendation}
+                    >
+                      <Lightbulb size={16} />
+                      <span>{recommendation}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
+function AddStudentModal({ form, setForm, addStudent, close }) {
+  function updateField(field, value) {
+    setForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+  }
 
-function Metric({ label, value }) {
   return (
-    <div className="metric">
+    <div className="modal-overlay" onClick={close}>
+      <div className="add-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <span className="eyebrow">STUDENT MANAGEMENT</span>
+            <h2>Add New Student</h2>
+            <p>Enter the student's academic and career information.</p>
+          </div>
+
+          <button className="close-button" onClick={close}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="form-body">
+          <FormSection title="Basic Information">
+            <InputField
+              label="Full Name"
+              value={form.name}
+              onChange={(value) => updateField("name", value)}
+              placeholder="Enter student name"
+            />
+
+            <InputField
+              label="Roll Number"
+              value={form.roll_no}
+              onChange={(value) => updateField("roll_no", value)}
+              placeholder="e.g. AIDS005"
+            />
+
+            <InputField
+              label="Email"
+              value={form.email}
+              onChange={(value) => updateField("email", value)}
+              placeholder="student@email.com"
+            />
+
+            <InputField
+              label="Department"
+              value={form.department}
+              onChange={(value) => updateField("department", value)}
+              placeholder="AI & Data Science"
+            />
+
+            <InputField
+              label="Year"
+              type="number"
+              value={form.year}
+              onChange={(value) => updateField("year", value)}
+            />
+          </FormSection>
+
+          <FormSection title="Academic Information">
+            <InputField
+              label="CGPA"
+              type="number"
+              step="0.1"
+              value={form.cgpa}
+              onChange={(value) => updateField("cgpa", value)}
+              placeholder="e.g. 8.5"
+            />
+
+            <InputField
+              label="Classes Conducted"
+              type="number"
+              value={form.classes_conducted}
+              onChange={(value) =>
+                updateField("classes_conducted", value)
+              }
+            />
+
+            <InputField
+              label="Classes Attended"
+              type="number"
+              value={form.classes_attended}
+              onChange={(value) => updateField("classes_attended", value)}
+            />
+          </FormSection>
+
+          <FormSection title="Experience & Achievements">
+            <InputField
+              label="Projects"
+              type="number"
+              value={form.projects}
+              onChange={(value) => updateField("projects", value)}
+            />
+
+            <InputField
+              label="Internships"
+              type="number"
+              value={form.internships}
+              onChange={(value) => updateField("internships", value)}
+            />
+
+            <InputField
+              label="Certifications"
+              type="number"
+              value={form.certifications}
+              onChange={(value) =>
+                updateField("certifications", value)
+              }
+            />
+
+            <InputField
+              label="Hackathons"
+              type="number"
+              value={form.hackathons}
+              onChange={(value) => updateField("hackathons", value)}
+            />
+
+            <InputField
+              label="Paper Presentations"
+              type="number"
+              value={form.paper_presentations}
+              onChange={(value) =>
+                updateField("paper_presentations", value)
+              }
+            />
+
+            <InputField
+              label="Awards"
+              type="number"
+              value={form.awards}
+              onChange={(value) => updateField("awards", value)}
+            />
+          </FormSection>
+
+          <FormSection title="Technical Profile">
+            <div className="full-width-field">
+              <label>Technical Skills</label>
+              <input
+                value={form.skills}
+                onChange={(e) => updateField("skills", e.target.value)}
+                placeholder="Python, Java, SQL, React"
+              />
+              <small>Separate skills with commas.</small>
+            </div>
+
+            <div className="full-width-field">
+              <label>Placement Status</label>
+              <select
+                value={form.placement_status}
+                onChange={(e) =>
+                  updateField("placement_status", e.target.value)
+                }
+              >
+                <option>Not Ready</option>
+                <option>Preparing</option>
+                <option>Ready</option>
+              </select>
+            </div>
+          </FormSection>
+        </div>
+
+        <div className="form-footer">
+          <button className="secondary-button" onClick={close}>
+            Cancel
+          </button>
+
+          <button className="primary-button" onClick={addStudent}>
+            <UserPlus size={17} />
+            Add Student
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ icon, label, value, detail }) {
+  return (
+    <div className="stat-card">
+      <div className="stat-icon">{icon}</div>
+
+      <div className="stat-content">
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <small>{detail}</small>
+      </div>
+    </div>
+  );
+}
+
+function FeatureCard({ icon, title, text }) {
+  return (
+    <div className="feature-card">
+      <div className="feature-icon">{icon}</div>
+
+      <div>
+        <h4>{title}</h4>
+        <p>{text}</p>
+      </div>
+    </div>
+  );
+}
+
+function PanelHeader({ title, subtitle, icon }) {
+  return (
+    <div className="panel-header">
+      <div className="panel-title">
+        <div className="panel-icon">{icon}</div>
+
+        <div>
+          <h3>{title}</h3>
+          <p>{subtitle}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ text, risk = false }) {
+  const value = String(text || "").toLowerCase();
+
+  let className = "neutral";
+
+  if (
+    value.includes("ready") ||
+    value.includes("excellent") ||
+    value === "low"
+  ) {
+    className = "positive";
+  }
+
+  if (
+    value.includes("medium") ||
+    value.includes("average") ||
+    value.includes("preparing")
+  ) {
+    className = "warning";
+  }
+
+  if (
+    value.includes("high") ||
+    value.includes("not ready") ||
+    value.includes("critical")
+  ) {
+    className = "danger";
+  }
+
+  if (risk) {
+    if (value === "low") className = "positive";
+    if (value === "medium") className = "warning";
+    if (value === "high") className = "danger";
+  }
+
+  return <span className={`status-badge ${className}`}>{text}</span>;
+}
+
+function Metric({ label, value, icon }) {
+  return (
+    <div className="metric-card">
+      <div className="metric-icon">{icon}</div>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
   );
 }
 
+function AnalysisCard({ icon, title, children, className = "" }) {
+  return (
+    <section className={`analysis-card ${className}`}>
+      <div className="analysis-card-header">
+        <div className="analysis-card-icon">{icon}</div>
+        <h3>{title}</h3>
+      </div>
+
+      {children}
+    </section>
+  );
+}
 
 function Detail({ label, value }) {
   return (
-    <div className="detail">
+    <div className="detail-item">
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
   );
 }
 
-
-function AnalysisList({ title, items, type }) {
-
+function FormSection({ title, children }) {
   return (
-    <div className="analysis-list">
-
-      <h4>{title}</h4>
-
-      {items.length === 0 ? (
-        <p className="none">No items identified.</p>
-      ) : (
-
-        items.map((item, index) => (
-
-          <div
-            className={`analysis-item ${type}`}
-            key={index}
-          >
-            {type === "positive" ? (
-              <CheckCircle size={15} />
-            ) : (
-              <AlertTriangle size={15} />
-            )}
-
-            <span>{item}</span>
-
-          </div>
-
-        ))
-
-      )}
-
+    <div className="form-section">
+      <h3>{title}</h3>
+      <div className="form-grid">{children}</div>
     </div>
   );
 }
 
-
-function Input({
+function InputField({
   label,
   value,
   onChange,
+  placeholder,
   type = "text",
-  required = false,
-  step
+  step,
 }) {
-
   return (
     <div className="form-field">
-
       <label>{label}</label>
 
       <input
         type={type}
-        value={value}
         step={step}
-        required={required}
+        value={value}
+        placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
       />
-
     </div>
   );
 }
-
 
 export default App;
